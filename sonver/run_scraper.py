@@ -1,8 +1,8 @@
 import logging
 
-from normalize import normalize_item
-from db import init_db, upsert_part
-from scrapers import AutopliusScraper, MLAutoScraper, MobileDeScraper, RRRScraper
+from .normalize import normalize_item
+from .db import init_db, upsert_part
+from .scrapers import AutopliusScraper, MLAutoScraper, MobileDeScraper, RRRScraper
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

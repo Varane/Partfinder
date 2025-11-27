@@ -18,6 +18,7 @@
     <div>
       <select id="brand"></select>
       <select id="model"></select>
+      <select id="generation"></select>
       <select id="category"></select>
       <button onclick="doSearch()">Search</button>
     </div>
@@ -55,15 +56,30 @@
         opt.textContent = model;
         modelSelect.appendChild(opt);
       });
+      populateGenerations();
+    }
+
+    function populateGenerations() {
+      const brand = document.getElementById('brand').value;
+      const model = document.getElementById('model').value;
+      const genSelect = document.getElementById('generation');
+      genSelect.innerHTML = '';
+      (tree[brand]?.[model] ? Object.keys(tree[brand][model]) : []).forEach((gen) => {
+        const opt = document.createElement('option');
+        opt.value = gen;
+        opt.textContent = gen;
+        genSelect.appendChild(opt);
+      });
       populateCategories();
     }
 
     function populateCategories() {
       const brand = document.getElementById('brand').value;
       const model = document.getElementById('model').value;
+      const generation = document.getElementById('generation').value;
       const categorySelect = document.getElementById('category');
       categorySelect.innerHTML = '';
-      (tree[brand]?.[model] || []).forEach((cat) => {
+      (tree[brand]?.[model]?.[generation] || []).forEach((cat) => {
         const opt = document.createElement('option');
         opt.value = cat;
         opt.textContent = cat;
@@ -72,13 +88,15 @@
     }
 
     document.getElementById('brand').addEventListener('change', populateModels);
-    document.getElementById('model').addEventListener('change', populateCategories);
+    document.getElementById('model').addEventListener('change', populateGenerations);
+    document.getElementById('generation').addEventListener('change', populateCategories);
 
     async function doSearch() {
       const brand = document.getElementById('brand').value;
       const model = document.getElementById('model').value;
+      const generation = document.getElementById('generation').value;
       const category = document.getElementById('category').value;
-      const res = await fetch(`/tree/search?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}&category=${encodeURIComponent(category)}`);
+      const res = await fetch(`/tree/search?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}&generation=${encodeURIComponent(generation)}&category=${encodeURIComponent(category)}`);
       const data = await res.json();
       renderResults(data.offers || []);
     }

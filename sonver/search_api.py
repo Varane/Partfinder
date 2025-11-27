@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 import sqlite3
 from fastapi import FastAPI, Query
 
-from db import get_connection, init_db
+from .db import get_connection, init_db
 
 app = FastAPI(title="SONVER Search API")
 
@@ -32,36 +32,39 @@ def compute_sonver_price(article: str) -> Optional[float]:
 def fetch_offers_by_article(article: str) -> List[Dict[str, Any]]:
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM parts WHERE article LIKE ?", (f"%{article}%",))
+    cur.execute("SELECT * FROM parts WHERE article LIKE ? ORDER BY price ASC", (f"%{article}%",))
     rows = cur.fetchall()
     conn.close()
     return [row_to_dict(row) for row in rows]
 
 
-def build_tree() -> Dict[str, Dict[str, List[str]]]:
+def build_tree() -> Dict[str, Dict[str, Dict[str, List[str]]]]:
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT brand, model, description FROM parts")
-    tree: Dict[str, Dict[str, List[str]]] = {}
-    for brand, model, description in cur.fetchall():
+    cur.execute("SELECT brand, model, generation, category FROM parts")
+    tree: Dict[str, Dict[str, Dict[str, List[str]]]] = {}
+    for brand, model, generation, category in cur.fetchall():
         brand_node = tree.setdefault(brand or "Unknown", {})
-        categories = brand_node.setdefault(model or "Unknown", [])
-        category = description or "Misc"
-        if category not in categories:
-            categories.append(category)
+        model_node = brand_node.setdefault(model or "Unknown", {})
+        gen_key = generation or "Unknown"
+        categories = model_node.setdefault(gen_key, [])
+        cat_value = category or "Misc"
+        if cat_value not in categories:
+            categories.append(cat_value)
     conn.close()
     return tree
 
 
-def search_tree(brand: str, model: str, category: str) -> List[Dict[str, Any]]:
+def search_tree(brand: str, model: str, generation: str, category: str) -> List[Dict[str, Any]]:
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
         """
         SELECT * FROM parts
-        WHERE brand = ? AND model = ? AND description LIKE ?
+        WHERE brand = ? AND model = ? AND generation = ? AND category LIKE ?
+        ORDER BY price ASC
         """,
-        (brand, model, f"%{category}%"),
+        (brand, model, generation, f"%{category}%"),
     )
     rows = cur.fetchall()
     conn.close()
@@ -84,7 +87,7 @@ def search(article: str = Query(..., description="Part number to search")) -> Di
 
 
 @app.get("/tree")
-def tree() -> Dict[str, Dict[str, List[str]]]:
+def tree() -> Dict[str, Dict[str, Dict[str, List[str]]]]:
     return build_tree()
 
 
@@ -92,7 +95,8 @@ def tree() -> Dict[str, Dict[str, List[str]]]:
 def tree_search(
     brand: str = Query(...),
     model: str = Query(...),
+    generation: str = Query(...),
     category: str = Query(""),
 ) -> Dict[str, Any]:
-    offers = search_tree(brand, model, category)
+    offers = search_tree(brand, model, generation, category)
     return {"offers": offers}

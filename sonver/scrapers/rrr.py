@@ -1,5 +1,6 @@
+import json
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from bs4 import BeautifulSoup
 
@@ -13,14 +14,46 @@ class RRRScraper(BaseScraper):
     base_url = "https://rrr.lt"
     platform = "RRR"
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.session.headers.update(
+            {
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+                "Accept": "application/json, text/html;q=0.9",
+            }
+        )
+
+    # -----------------------
+    # JSON helpers
+    # -----------------------
+    def _fetch_json(self, path: str, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
+        response = self.get(f"{self.base_url}{path}", params=params)
+        if not response:
+            return None
+        try:
+            return response.json()
+        except json.JSONDecodeError:
+            return None
+
+    # -----------------------
+    # Discovery helpers
+    # -----------------------
     def fetch_brands(self) -> List[Dict[str, str]]:
+        data = self._fetch_json("/api/brands")
+        if isinstance(data, list) and data:
+            return [
+                {"id": str(item.get("id")), "name": item.get("name", "")}
+                for item in data
+                if item.get("id") and item.get("name")
+            ]
+
+        # fallback to HTML form parsing
         url = f"{self.base_url}/en"
         response = self.get(url)
         if not response:
             return []
-
         soup = BeautifulSoup(response.text, "html.parser")
-        brands = []
+        brands: List[Dict[str, str]] = []
         for option in soup.select("select[id*=brand] option, select[name*=brand] option"):
             value = option.get("value")
             text = option.get_text(strip=True)
@@ -29,13 +62,20 @@ class RRRScraper(BaseScraper):
         return brands
 
     def fetch_models(self, brand: Dict[str, str]) -> List[Dict[str, str]]:
+        data = self._fetch_json("/api/models", params={"brand": brand["id"]})
+        if isinstance(data, list) and data:
+            return [
+                {"id": str(item.get("id")), "name": item.get("name", "")}
+                for item in data
+                if item.get("id") and item.get("name")
+            ]
+
         url = f"{self.base_url}/en/auto-parts/{brand['id']}"
         response = self.get(url)
         if not response:
             return []
-
         soup = BeautifulSoup(response.text, "html.parser")
-        models = []
+        models: List[Dict[str, str]] = []
         for option in soup.select("select[id*=model] option, select[name*=model] option"):
             value = option.get("value")
             text = option.get_text(strip=True)
@@ -43,22 +83,37 @@ class RRRScraper(BaseScraper):
                 models.append({"id": value, "name": text})
         return models
 
-    def fetch_categories(self) -> List[Dict[str, str]]:
-        url = f"{self.base_url}/en/auto-parts"
-        response = self.get(url)
-        if not response:
-            return []
+    def fetch_generations(self, brand: Dict[str, str], model: Dict[str, str]) -> List[Dict[str, str]]:
+        data = self._fetch_json(
+            "/api/generations", params={"brand": brand["id"], "model": model["id"]}
+        )
+        if isinstance(data, list) and data:
+            return [
+                {"id": str(item.get("id")), "name": item.get("name", "")}
+                for item in data
+                if item.get("id") and item.get("name")
+            ]
+        return []
 
-        soup = BeautifulSoup(response.text, "html.parser")
-        categories = []
-        for option in soup.select("select[id*=category] option, select[name*=category] option"):
-            value = option.get("value")
-            text = option.get_text(strip=True)
-            if value and text:
-                categories.append({"id": value, "name": text})
-        return categories
+    def fetch_categories(self, brand: Dict[str, str], model: Dict[str, str], generation: Dict[str, str]) -> List[Dict[str, str]]:
+        data = self._fetch_json(
+            "/api/categories",
+            params={"brand": brand["id"], "model": model["id"], "generation": generation["id"]},
+        )
+        if isinstance(data, list) and data:
+            return [
+                {"id": str(item.get("id")), "name": item.get("name", "")}
+                for item in data
+                if item.get("id") and item.get("name")
+            ]
+        return []
 
-    def parse_parts_page(self, html: str, brand: str, model: str, category: str) -> List[Dict[str, Any]]:
+    # -----------------------
+    # Parts parsing
+    # -----------------------
+    def parse_parts_page(
+        self, html: str, brand: str, model: str, generation: str, category: str
+    ) -> List[Dict[str, Any]]:
         soup = BeautifulSoup(html, "html.parser")
         parts: List[Dict[str, Any]] = []
         for item in soup.select("div.part, div.search-item, li.search-item"):
@@ -81,6 +136,7 @@ class RRRScraper(BaseScraper):
                     "article": article,
                     "brand": brand,
                     "model": model,
+                    "generation": generation,
                     "category": category,
                     "description": description,
                     "price": price,
@@ -107,7 +163,27 @@ class RRRScraper(BaseScraper):
                     currency = token
         return amount, currency
 
-    def fetch_parts(self, brand: Dict[str, str], model: Dict[str, str], category: Dict[str, str]) -> List[Dict[str, Any]]:
+    def parse_json_item(
+        self, item: Dict[str, Any], brand: str, model: str, generation: str, category: str
+    ) -> Dict[str, Any]:
+        return {
+            "platform": self.platform,
+            "article": item.get("article") or item.get("code") or item.get("partNumber") or "",
+            "brand": brand,
+            "model": model,
+            "generation": generation,
+            "category": category,
+            "description": item.get("title") or item.get("description") or "",
+            "price": float(item.get("price") or 0),
+            "currency": item.get("currency") or item.get("currencyCode") or "EUR",
+            "location": item.get("location") or item.get("city") or "",
+            "url": item.get("url") or item.get("link") or "",
+            "image_url": item.get("image") or item.get("imageUrl") or "",
+        }
+
+    def fetch_parts(
+        self, brand: Dict[str, str], model: Dict[str, str], generation: Dict[str, str], category: Dict[str, str]
+    ) -> List[Dict[str, Any]]:
         page = 1
         results: List[Dict[str, Any]] = []
         while True:
@@ -115,16 +191,30 @@ class RRRScraper(BaseScraper):
                 "page": page,
                 "brand": brand["id"],
                 "model": model["id"],
+                "generation": generation["id"],
                 "category": category["id"],
+                "size": 50,
             }
+            data = self._fetch_json("/api/search", params=params)
+            if isinstance(data, dict) and data.get("items"):
+                items = data.get("items") or []
+                for itm in items:
+                    results.append(
+                        self.parse_json_item(itm, brand["name"], model["name"], generation["name"], category["name"])
+                    )
+                if len(items) < params["size"]:
+                    break
+                page += 1
+                continue
+
             response = self.get(f"{self.base_url}/en/auto-parts/search", params=params)
             if not response:
                 break
-
-            page_items = self.parse_parts_page(response.text, brand["name"], model["name"], category["name"])
+            page_items = self.parse_parts_page(
+                response.text, brand["name"], model["name"], generation["name"], category["name"]
+            )
             if not page_items:
                 break
-
             results.extend(page_items)
             page += 1
         return results
@@ -134,11 +224,13 @@ class RRRScraper(BaseScraper):
         all_items: List[Dict[str, Any]] = []
 
         brands = self.fetch_brands()
-        categories = self.fetch_categories()
         for brand in brands:
             models = self.fetch_models(brand)
             for model in models:
-                for category in categories:
-                    parts = self.fetch_parts(brand, model, category)
-                    all_items.extend(parts)
+                generations = self.fetch_generations(brand, model) or [{"id": "", "name": ""}]
+                for generation in generations:
+                    categories = self.fetch_categories(brand, model, generation) or [{"id": "", "name": "All"}]
+                    for category in categories:
+                        parts = self.fetch_parts(brand, model, generation, category)
+                        all_items.extend(parts)
         return all_items

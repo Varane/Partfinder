@@ -22,6 +22,8 @@ def init_db() -> None:
             article TEXT,
             brand TEXT,
             model TEXT,
+            generation TEXT,
+            category TEXT,
             description TEXT,
             price REAL,
             currency TEXT,
@@ -35,6 +37,7 @@ def init_db() -> None:
     cur.execute("CREATE INDEX IF NOT EXISTS idx_article ON parts(article)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_platform ON parts(platform)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_price ON parts(price)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_category ON parts(category)")
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_item ON parts(platform, article, url)")
     conn.commit()
     conn.close()
@@ -62,13 +65,15 @@ def upsert_part(item: Dict[str, Any]) -> bool:
             conn,
             """
             UPDATE parts
-            SET brand = ?, model = ?, description = ?, price = ?, currency = ?,
-                location = ?, image_url = ?, last_seen = ?
+            SET brand = ?, model = ?, generation = ?, category = ?, description = ?,
+                price = ?, currency = ?, location = ?, image_url = ?, last_seen = ?
             WHERE id = ?
             """,
             (
                 item.get("brand"),
                 item.get("model"),
+                item.get("generation"),
+                item.get("category"),
                 item.get("description"),
                 item.get("price"),
                 item.get("currency"),
@@ -85,15 +90,17 @@ def upsert_part(item: Dict[str, Any]) -> bool:
         conn,
         """
         INSERT INTO parts (
-            platform, article, brand, model, description, price, currency,
-            location, url, image_url, last_seen
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            platform, article, brand, model, generation, category, description,
+            price, currency, location, url, image_url, last_seen
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             item.get("platform"),
             item.get("article"),
             item.get("brand"),
             item.get("model"),
+            item.get("generation"),
+            item.get("category"),
             item.get("description"),
             item.get("price"),
             item.get("currency"),
