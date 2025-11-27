@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Results - SONVER</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; background: #f7f7f7; }
+    .card { background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 1rem; }
+    ul { list-style: none; padding: 0; }
+    li { border-bottom: 1px solid #eee; padding: 0.5rem 0; }
+  </style>
+</head>
+<body>
+  <div class="card" id="summary"></div>
+  <div class="card" id="offers"></div>
+
+  <script>
+    function getParam(name) {
+      const params = new URLSearchParams(window.location.search);
+      return params.get(name) || '';
+    }
+
+    async function load() {
+      const article = getParam('article');
+      if (!article) {
+        document.getElementById('summary').innerText = 'No article specified.';
+        return;
+      }
+      const res = await fetch(`/search?article=${encodeURIComponent(article)}`);
+      const data = await res.json();
+      render(article, data);
+    }
+
+    function render(article, data) {
+      const summary = document.getElementById('summary');
+      const offers = data.offers || [];
+      const best = offers.length ? offers.reduce((a, b) => (a.price < b.price ? a : b)) : null;
+
+      summary.innerHTML = `<h2>Part ${article}</h2>` +
+        `<p>Recommended Sonver price: <strong>${data.recommended_price ?? 'N/A'}</strong></p>` +
+        (best ? `<p>Best offer: ${best.price} ${best.currency} from ${best.platform}</p>` : '<p>No offers available.</p>');
+
+      const list = document.getElementById('offers');
+      let html = '<h3>All offers</h3><ul>';
+      offers.forEach((o) => {
+        html += `<li>${o.platform}: ${o.price} ${o.currency} - ${o.description} <a href="${o.url}" target="_blank">Open</a></li>`;
+      });
+      html += '</ul>';
+      list.innerHTML = html;
+    }
+
+    load();
+  </script>
+</body>
+</html>

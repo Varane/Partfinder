@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Browse Parts - SONVER</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; background: #f7f7f7; }
+    .card { background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 1rem; }
+    select, button { padding: 0.5rem; margin-right: 0.5rem; }
+    ul { list-style: none; padding: 0; }
+    li { border-bottom: 1px solid #eee; padding: 0.5rem 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Browse inventory</h2>
+    <div>
+      <select id="brand"></select>
+      <select id="model"></select>
+      <select id="category"></select>
+      <button onclick="doSearch()">Search</button>
+    </div>
+  </div>
+  <div id="results" class="card" style="display:none;"></div>
+
+  <script>
+    let tree = {};
+
+    async function loadTree() {
+      const res = await fetch('/tree');
+      tree = await res.json();
+      populateBrands();
+    }
+
+    function populateBrands() {
+      const brandSelect = document.getElementById('brand');
+      brandSelect.innerHTML = '';
+      Object.keys(tree).forEach((brand) => {
+        const opt = document.createElement('option');
+        opt.value = brand;
+        opt.textContent = brand;
+        brandSelect.appendChild(opt);
+      });
+      populateModels();
+    }
+
+    function populateModels() {
+      const brand = document.getElementById('brand').value;
+      const modelSelect = document.getElementById('model');
+      modelSelect.innerHTML = '';
+      (tree[brand] ? Object.keys(tree[brand]) : []).forEach((model) => {
+        const opt = document.createElement('option');
+        opt.value = model;
+        opt.textContent = model;
+        modelSelect.appendChild(opt);
+      });
+      populateCategories();
+    }
+
+    function populateCategories() {
+      const brand = document.getElementById('brand').value;
+      const model = document.getElementById('model').value;
+      const categorySelect = document.getElementById('category');
+      categorySelect.innerHTML = '';
+      (tree[brand]?.[model] || []).forEach((cat) => {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.textContent = cat;
+        categorySelect.appendChild(opt);
+      });
+    }
+
+    document.getElementById('brand').addEventListener('change', populateModels);
+    document.getElementById('model').addEventListener('change', populateCategories);
+
+    async function doSearch() {
+      const brand = document.getElementById('brand').value;
+      const model = document.getElementById('model').value;
+      const category = document.getElementById('category').value;
+      const res = await fetch(`/tree/search?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}&category=${encodeURIComponent(category)}`);
+      const data = await res.json();
+      renderResults(data.offers || []);
+    }
+
+    function renderResults(offers) {
+      const container = document.getElementById('results');
+      container.style.display = 'block';
+      let html = '<h3>Offers</h3><ul>';
+      offers.forEach((o) => {
+        html += `<li>${o.article} - ${o.description} (${o.price} ${o.currency}) [${o.platform}]</li>`;
+      });
+      html += '</ul>';
+      container.innerHTML = html;
+    }
+
+    loadTree();
+  </script>
+</body>
+</html>
