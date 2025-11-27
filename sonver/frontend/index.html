@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SONVER Search</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; background: #f7f7f7; }
+    header { margin-bottom: 1.5rem; }
+    .card { background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 1rem; }
+    label { display: block; margin-bottom: 0.5rem; font-weight: bold; }
+    input[type="text"] { width: 100%; padding: 0.5rem; font-size: 1rem; }
+    button { padding: 0.6rem 1rem; margin-top: 0.5rem; font-size: 1rem; cursor: pointer; }
+    ul { list-style: none; padding: 0; }
+    li { border-bottom: 1px solid #eee; padding: 0.5rem 0; }
+    .price { font-weight: bold; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SONVER</h1>
+    <p>Unified car-parts search across platforms.</p>
+  </header>
+
+  <div class="card">
+    <label for="article">Search by part number</label>
+    <input id="article" type="text" placeholder="Enter part number" />
+    <button onclick="search()">Search</button>
+  </div>
+
+  <div id="results" class="card" style="display:none;"></div>
+
+  <script>
+    async function search() {
+      const article = document.getElementById('article').value.trim();
+      if (!article) return;
+      const res = await fetch(`/search?article=${encodeURIComponent(article)}`);
+      const data = await res.json();
+      renderResults(article, data);
+    }
+
+    function renderResults(article, data) {
+      const container = document.getElementById('results');
+      container.style.display = 'block';
+      const offers = data.offers || [];
+      const best = data.best_offer;
+      let html = `<h2>Results for ${article}</h2>`;
+      html += `<p>Recommended Sonver price: <strong>${data.recommended_price ?? 'N/A'}</strong></p>`;
+      if (best) {
+        html += `<p>Best current offer: ${best.price} ${best.currency} (${best.platform})</p>`;
+      }
+      html += '<ul>';
+      offers.forEach((o) => {
+        html += `<li><span class="price">${o.price} ${o.currency}</span> - ${o.description || ''} [${o.platform}] <a href="${o.url}" target="_blank">View</a></li>`;
+      });
+      html += '</ul>';
+      container.innerHTML = html;
+    }
+  </script>
+</body>
+</html>
